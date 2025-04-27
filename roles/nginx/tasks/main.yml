@@ -3,10 +3,16 @@
 
 - name: Install Nginx
   become: yes
-  apt:
+  ansible.builtin.package:
     name: nginx
-    state: latest
-    update_cache: yes
+    state: present
+
+- name: Ensure Nginx is enabled and started
+  become: yes
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: yes
 
 - name: Get Nginx port from local Consul
   uri:
