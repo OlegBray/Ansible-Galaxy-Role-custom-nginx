@@ -25,6 +25,7 @@
     msg: "Nginx will run on port {{ nginx_port }}"
 
 - name: Deploy nginx.conf rendered with the selected port
+  become: yes
   template:
     src: templates/index.html.j2
     dest: /etc/nginx/sites-available/default
@@ -34,6 +35,7 @@
   notify: Restart Nginx
 
 - name: Deploy custom HTML page
+  become: yes
   template:
     src: templates/index.html.j2 
     dest: /var/www/html/index.html
