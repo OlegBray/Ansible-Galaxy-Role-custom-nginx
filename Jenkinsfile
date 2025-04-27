@@ -16,7 +16,7 @@ pipeline {
                     withCredentials([string(credentialsId: 'vault-token', variable: 'VAULT_TOKEN')]) {
                         sh '''
                             # Get response from Vault 
-                            RESPONSE=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" --request GET http://vault:8200/v1/secret/aws/privat-key)
+                            RESPONSE=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" --request GET http://vault:8200/v1/secret/aws/pv-key)
                 
                             # Extract the private key
                             echo "$RESPONSE" | sed 's/.*"value":"//' | sed 's/".*//' > ~/.ssh_temp/ssh_key.pem
