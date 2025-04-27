@@ -1,8 +1,8 @@
 pipeline {
     agent any
     environment {
-        VAULT_TOKEN = credentials('vault-token-secret-text')
-        VM_HOST = 'Liron.aws.cts.care'
+        VAULT_TOKEN = credentials('vault-token')
+        VM_HOST = 'oleg.aws.cts.care'
         VM_USER = 'ubuntu'
     }
     stages {
@@ -13,7 +13,7 @@ pipeline {
                     sh 'mkdir -p ~/.ssh_temp && chmod 700 ~/.ssh_temp'
                     
                     // Retrieve private key from Vault using direct curl with basic shell processing
-                    withCredentials([string(credentialsId: 'vault-token-secret-text', variable: 'VAULT_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'vault-token', variable: 'VAULT_TOKEN')]) {
                         sh '''
                             # Get response from Vault 
                             RESPONSE=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" --request GET http://vault:8200/v1/secret/aws/privat-key)
@@ -26,18 +26,18 @@ pipeline {
                     }
 
                     // Dynamically get the EC2 instance IP using AWS CLI
-                    sh """
-                        EC2_IP=$(aws ec2 describe-instances --region {{ aws_region }} --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
-                        echo "EC2 IP: $EC2_IP"
-                    """
+                    // sh """
+                    //     EC2_IP=$(aws ec2 describe-instances --region {{ aws_region }} --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
+                    //     echo "EC2 IP: $EC2_IP"
+                    // """
                     
                     
-                    echo "Private Key retrieved and stored securely"
+                    // echo "Private Key retrieved and stored securely"
                     
-                    // Test connection to VM
-                    sh """
-                        ssh -o StrictHostKeyChecking=no -i ~/.ssh_temp/ssh_key.pem ${VM_USER}@${VM_HOST} 'echo "Successfully connected to the virtual machine!"'
-                    """
+                    // // Test connection to VM
+                    // sh """
+                    //     ssh -o StrictHostKeyChecking=no -i ~/.ssh_temp/ssh_key.pem ${VM_USER}@${VM_HOST} 'echo "Successfully connected to the virtual machine!"'
+                    // """
                 }
             }
         }
