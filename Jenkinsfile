@@ -1,107 +1,105 @@
 pipeline {
     agent any
     environment {
-        VAULT_TOKEN = credentials('vault-token')
-        VM_HOST = 'oleg.aws.cts.care'
-        VM_USER = 'ubuntu'
+        VAULT_ADDR = 'http://vault:8200'
+        AWS_CREDS_PATH = 'secret/data/aws/creds'
     }
     stages {
-        stage('Get SSH Private Key from Vault') {
+        stage('Install Dependencies') {
             steps {
-                script {
-                    // Create a directory for storing credentials securely
-                    sh 'mkdir -p ~/.ssh_temp && chmod 700 ~/.ssh_temp'
+                sh '''
+                    # Check if Python is installed
+                    echo "Installing Python 3..."
+                    sudo apt update -y || echo "Warning: apt-get update failed"
+                    sudo apt install -y python3 python3-pip || echo "Warning: Python installation failed"
                     
-                    // Retrieve private key from Vault using direct curl with basic shell processing
-                    withCredentials([string(credentialsId: 'vault-token', variable: 'VAULT_TOKEN')]) {
-                        sh '''
-                            # Get response from Vault 
-                            RESPONSE=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" --request GET http://vault:8200/v1/secret/aws/pv-key)
-                
-                            # Extract the private key
-                            echo "$RESPONSE" | sed 's/.*"value":"//' | sed 's/".*//' > ~/.ssh_temp/ssh_key.pem
-                            sed -i 's/\\\\n/\\n/g' ~/.ssh_temp/ssh_key.pem
-                            chmod 600 ~/.ssh_temp/ssh_key.pem
-                        '''
+                    # Check if pip is installed
+                    echo "Installing pip3..."
+                    sudo apt install -y python3-pip || echo "Warning: pip installation failed"
+                    
+                    # Install Ansible (try both with and without sudo)
+                    echo "Installing Ansible..."
+                    sudo apt install ansible || echo "Warning: Ansible installation failed"
+                    
+                    # Display versions
+                    python3 --version || echo "Python not installed"
+                    pip3 --version || echo "pip not installed"
+                    ansible --version || echo "Ansible not installed"
+                '''
+            }
+        }
+        
+        stage('Read AWS Credentials from Vault') {
+            steps {
+                withCredentials([string(credentialsId: 'vault-token', variable: 'VAULT_TOKEN')]) {
+                    script {
+                        try {
+                            def response = httpRequest(
+                                httpMode: 'GET',
+                                url: "${env.VAULT_ADDR}/v1/${env.AWS_CREDS_PATH}",
+                                customHeaders: [[name: 'X-Vault-Token', value: VAULT_TOKEN]],
+                                validResponseCodes: '200'
+                            )
+                            
+                            echo "Vault response status: ${response.status}"
+                            
+                            def json = readJSON text: response.content
+                            
+                            if (json.data && json.data.data && json.data.data.access_key_id && json.data.data.secret_access_key) {
+                                env.AWS_ACCESS_KEY_ID = json.data.data.access_key_id
+                                env.AWS_SECRET_ACCESS_KEY = json.data.data.secret_access_key
+                                echo "✅ AWS credentials retrieved successfully"
+                            } else {
+                                error "AWS credentials not found in Vault response!"
+                            }
+                        } catch (Exception e) {
+                            echo "Error accessing Vault: ${e.message}"
+                            throw e
+                        }
                     }
-
-                    // Dynamically get the EC2 instance IP using AWS CLI
-                    // sh """
-                    //     EC2_IP=$(aws ec2 describe-instances --region {{ aws_region }} --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
-                    //     echo "EC2 IP: $EC2_IP"
-                    // """
-                    
-                    
-                    // echo "Private Key retrieved and stored securely"
-                    
-                    // // Test connection to VM
-                    // sh """
-                    //     ssh -o StrictHostKeyChecking=no -i ~/.ssh_temp/ssh_key.pem ${VM_USER}@${VM_HOST} 'echo "Successfully connected to the virtual machine!"'
-                    // """
                 }
             }
         }
 
-        
-        
         stage('Install Ansible') {
             steps {
                 // Install ansible on Jenkins agent if not already installed
                 sh '''
                     if ! command -v ansible-playbook &> /dev/null; then
-                        sudo apt-get update
-                        sudo apt-get install -y ansible
+                        sudo apt update
+                        sudo apt install -y ansible
                     fi
-                '''
-            }
-        }
-
-        stage('Install Ansible AWS Collection') {
-            steps {
-                sh '''
-                    echo "Installing amazon.aws and community.aws collection..."
-                    ansible-galaxy collection install amazon.aws
-                    ansible-galaxy collection install community.aws
-
-                '''
-            }
-        }
-        
-        stage('Prepare Inventory') {
-            steps {
-                // Create inventory file for the target VM
-                sh '''
-                    echo "[webserver]" > inventory
-                    echo "${VM_HOST} ansible_user=${VM_USER} ansible_ssh_private_key_file=~/.ssh_temp/ssh_key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> inventory
-                    cat inventory
                 '''
             }
         }
         
         stage('Run Ansible Playbook') {
             steps {
-                // Run ansible playbook from Jenkins against the remote VM
-                sh '''
-                    export ANSIBLE_HOST_KEY_CHECKING=False
-                    ansible-playbook -i inventory nginx.yml -v --extra vars "random=`${random}`"
-                '''
-            }
-        }
-        
-        stage('Cleanup') {
-            steps {
-                // Clean up the SSH key after use
-                sh 'rm -rf ~/.ssh_temp'
-                echo "Credentials cleaned up"
+                withEnv(["AWS_ACCESS_KEY_ID=${env.AWS_ACCESS_KEY_ID}", 
+                         "AWS_SECRET_ACCESS_KEY=${env.AWS_SECRET_ACCESS_KEY}"]) {
+                    sh '''
+                        # Add ~/.local/bin to PATH if it exists
+                        export PATH=$PATH:~/.local/bin
+                        
+                        # Print working directory and files
+                        pwd
+                        ls -la
+                        cd "Jenkins/Jenkins-Ansible-Nginx/Ansible-Nginx"
+                        pwd
+                        # Check for ansible-playbook
+                        which ansible-playbook || echo "Warning: ansible-playbook not found in PATH"
+                        
+                        # Run ansible-playbook
+                        ansible-playbook -i inventory.ini nginx.yml -v || echo "Warning: Ansible playbook execution failed"
+                    '''
+                }
             }
         }
     }
     
     post {
         always {
-            // Ensure credentials are always cleaned up, even if the pipeline fails
-            sh 'rm -rf ~/.ssh_temp || true'
+            sh 'unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY'
         }
     }
 }
-
