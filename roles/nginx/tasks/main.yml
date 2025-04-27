@@ -2,6 +2,7 @@
 # tasks file for nginx
 
 - name: Install Nginx
+  become: yes
   apt:
     name: nginx
     state: latest
