@@ -81,11 +81,6 @@ pipeline {
                         # Add ~/.local/bin to PATH if it exists
                         export PATH=$PATH:~/.local/bin
                         
-                        # Print working directory and files
-                        pwd
-                        ls -la
-                        cd "Jenkins/Jenkins-Ansible-Nginx/Ansible-Nginx"
-                        pwd
                         # Check for ansible-playbook
                         which ansible-playbook || echo "Warning: ansible-playbook not found in PATH"
                         
