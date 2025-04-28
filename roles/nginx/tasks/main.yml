@@ -12,7 +12,7 @@
   ansible.builtin.service:
     name: nginx
     state: started
-    enabled: yes
+    # enabled: yes
 
 - name: Get Nginx port from local Consul
   uri:
